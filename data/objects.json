@@ -396,12 +396,12 @@
     "lng": 37.6000
   },
   {
-    "label": "Cairo",
+    "label": "Egypt",
     "lat": 30.0444,
     "lng": 31.2357
   },
   {
-    "label": "Tehran",
+    "label": "Persia",
     "lat": 35.6892,
     "lng": 51.3890
   }
@@ -411,14 +411,14 @@
         "toLat": 30.06,
         "toLng": 31.26,
         "influence": "culture",
-        "toLabel": "Cairo",
+        "toLabel": "Egypt",
         "endNote": "Add text here"
       },
       {
         "toLat": 35.6892,
         "toLng": 51.3890,
         "influence": "culture",
-        "toLabel": "Tehran",
+        "toLabel": "Persia",
         "endNote": "Add text here"
       }
     ]
