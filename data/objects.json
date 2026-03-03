@@ -29,7 +29,7 @@
     "lng": 14.0
   },
   {
-    "label": "Cairo",
+    "label": "Egypt",
     "lat": 30.0444,
     "lng": 31.2357
   }
@@ -39,7 +39,7 @@
         "toLat": 30.06,
         "toLng": 31.26,
         "influence": "commerce",
-        "toLabel": "Cairo",
+        "toLabel": "Egypt",
         "curve": { "strength": 0, "min": 0, "side": 1 },
         "endNote": "Add text here"
       }
