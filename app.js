@@ -3,15 +3,14 @@
 // Loads:
 //   - data/objects.json  (array of objects)
 // Renders (per selected object tab):
-//   - origin marker(s) from obj.locations
-//   - destination marker(s) from obj.routes (same size/colour/behaviour as origin)
-//   - routes (curved or straight depending on obj.routes[].curve)
+//   - markers from obj.locations (deduped by coordinates)
+//   - destination markers from obj.routes (deduped by coordinates; no stacking)
+//   - routes drawn ONLY from the first valid obj.locations[0] (origin)
 // Interaction:
-//   - Hover marker -> small info tooltip (thumbnail + minimal text)
-//   - Click marker -> right panel (full details)
+//   - Hover marker -> small info tooltip (thumbnail + minimal text) [shows THIS marker location only]
+//   - Click marker -> right panel (full details) [shows ALL locations]
 // Notes:
 //   - All markers + routes are BLUE (as requested)
-//   - Multiple routes supported
 // ==============================
 
 const panelTitle = document.getElementById("panelTitle");
@@ -157,7 +156,7 @@ function fadeInMarker(marker, targetFillOpacity, durationMs = 450) {
 
 // ---------------- Curved route helpers (NO plugin) ----------------
 // Supports per-route curve options: {strength, side, min, max}
-// If you set strength:0 and min:0 (like you already do), it becomes a straight line.
+// If you set strength:0 and min:0 it becomes a straight line.
 function buildCurvedPoints(fromLatLng, toLatLng, steps = 28, curveOpts = {}) {
   const zoom = map.getZoom();
   const p0 = map.project(fromLatLng, zoom);
@@ -226,7 +225,8 @@ function buildHoverHTML(obj, locLabel) {
   const yearRaw = obj?.hover?.year ?? obj?.year ?? "";
   const year = yearRaw ? escapeHtml(yearRaw) : "";
 
-  const locRaw = locLabel ?? obj?.hover?.location ?? "";
+  // ✅ IMPORTANT: tooltip shows ONLY the marker’s label passed in
+  const locRaw = locLabel ?? "";
   const loc = locRaw ? escapeHtml(locRaw) : "";
 
   const imgHtml = thumb
@@ -252,9 +252,23 @@ function buildPanelHTML(obj) {
   const yearRaw = obj?.panel?.year ?? obj?.hover?.year ?? obj?.year ?? "";
   const year = yearRaw ? escapeHtml(yearRaw) : "";
 
+  // ✅ Panel shows ALL locations (deduped by label)
   const locs = Array.isArray(obj?.locations) ? obj.locations : [];
-  const locHtml = locs.length
-    ? `<p><strong>Locations:</strong> ${locs.map(l => escapeHtml(l.label || "")).filter(Boolean).join(", ")}</p>`
+  const locLabels = locs
+    .map(l => (l?.label ? String(l.label).trim() : ""))
+    .filter(Boolean);
+
+  const uniqueLocLabels = [];
+  const seenLabels = new Set();
+  for (const lab of locLabels) {
+    const key = lab.toLowerCase();
+    if (seenLabels.has(key)) continue;
+    seenLabels.add(key);
+    uniqueLocLabels.push(lab);
+  }
+
+  const locHtml = uniqueLocLabels.length
+    ? `<p><strong>Locations:</strong> ${uniqueLocLabels.map(escapeHtml).join(", ")}</p>`
     : "";
 
   const images = Array.isArray(obj?.panel?.images) ? obj.panel.images : [];
@@ -288,7 +302,7 @@ async function loadData() {
   OBJECTS_BY_ID = new Map(objectsArr.map(o => [o.id, o]));
 }
 
-// ---------------- Marker factory (origin + destinations use this) ----------------
+// ---------------- Marker factory ----------------
 function addInteractiveMarker(obj, lat, lng, locLabel) {
   const baseStyle = markerStyleBase(BLUE);
   const hoverStyle = markerStyleHover(BLUE);
@@ -354,60 +368,80 @@ function drawForObject(objectId) {
     return;
   }
 
-  // Avoid duplicate destination markers if multiple routes share the same coords
-  const seenDest = new Set();
-  let routeIndex = 0;
+  // ✅ GLOBAL: prevent stacked dots (dedupe ALL markers by coordinates)
+  const seenMarkers = new Set();
 
+  function coordKey(lat, lng) {
+    const a = Number(lat), b = Number(lng);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return `${a.toFixed(6)},${b.toFixed(6)}`;
+  }
+
+  // ✅ 1) Add markers for obj.locations (deduped by coord)
   for (const loc of locations) {
     if (loc?.lat == null || loc?.lng == null) continue;
 
-    // origin marker
-    addInteractiveMarker(obj, loc.lat, loc.lng, loc.label);
+    const key = coordKey(loc.lat, loc.lng);
+    if (!key) continue;
 
-    // routes from this origin
-    for (const r of routes) {
-      if (r?.toLat == null || r?.toLng == null) continue;
+    if (seenMarkers.has(key)) continue;
+    seenMarkers.add(key);
 
-      const from = L.latLng(Number(loc.lat), Number(loc.lng));
-      const to = L.latLng(Number(r.toLat), Number(r.toLng));
-      if (!Number.isFinite(from.lat) || !Number.isFinite(from.lng) || !Number.isFinite(to.lat) || !Number.isFinite(to.lng)) continue;
+    addInteractiveMarker(obj, loc.lat, loc.lng, loc.label || "");
+  }
 
-      // curve options (preserve your existing per-route curve config)
-      const c = r.curve || {};
-      const autoSide = (routeIndex % 2 === 0) ? 1 : -1;
+  // ✅ 3) Routes only from the FIRST valid location (no “return routes”)
+  const originLoc = locations.find(l => Number.isFinite(Number(l?.lat)) && Number.isFinite(Number(l?.lng)));
+  if (!originLoc) {
+    setPanel(obj.title || obj.id || "Object", `<p>No valid origin coordinates found for this object.</p>`);
+    return;
+  }
 
-      const curveOpts = {
-        strength: (c.strength != null) ? Number(c.strength) : undefined,
-        min:      (c.min != null) ? Number(c.min) : undefined,
-        max:      (c.max != null) ? Number(c.max) : undefined,
-        side:     (c.side === 1 || c.side === -1) ? c.side : autoSide
-      };
+  const origin = L.latLng(Number(originLoc.lat), Number(originLoc.lng));
 
-      const curvePts = buildCurvedPoints(from, to, 28, curveOpts);
+  let routeIndex = 0;
 
-      const routeLine = L.polyline(curvePts.slice(0, 2), {
-        color: BLUE,
-        weight: 3,
-        opacity: 0.9,
-        dashArray: "6 8"
-      }).addTo(routesLayer);
+  for (const r of routes) {
+    if (r?.toLat == null || r?.toLng == null) continue;
 
-      animateRouteCrawlCurved(routeLine, {
-        points: curvePts,
-        durationMs: 1500,
-        delayMs: routeIndex * 200,
-        token
-      });
+    const to = L.latLng(Number(r.toLat), Number(r.toLng));
+    if (!Number.isFinite(to.lat) || !Number.isFinite(to.lng)) continue;
 
-      // destination marker (same size/colour/behaviour as origin marker)
-      const key = `${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
-      if (!seenDest.has(key)) {
-        seenDest.add(key);
-        addInteractiveMarker(obj, to.lat, to.lng, r.toLabel || "Destination");
-      }
+    // curve options (preserve your existing per-route curve config)
+    const c = r.curve || {};
+    const autoSide = (routeIndex % 2 === 0) ? 1 : -1;
 
-      routeIndex++;
+    const curveOpts = {
+      strength: (c.strength != null) ? Number(c.strength) : undefined,
+      min:      (c.min != null) ? Number(c.min) : undefined,
+      max:      (c.max != null) ? Number(c.max) : undefined,
+      side:     (c.side === 1 || c.side === -1) ? c.side : autoSide
+    };
+
+    const curvePts = buildCurvedPoints(origin, to, 28, curveOpts);
+
+    const routeLine = L.polyline(curvePts.slice(0, 2), {
+      color: BLUE,
+      weight: 3,
+      opacity: 0.9,
+      dashArray: "6 8"
+    }).addTo(routesLayer);
+
+    animateRouteCrawlCurved(routeLine, {
+      points: curvePts,
+      durationMs: 1500,
+      delayMs: routeIndex * 200,
+      token
+    });
+
+    // ✅ Destination marker (deduped globally so it never stacks with origins)
+    const key = coordKey(to.lat, to.lng);
+    if (key && !seenMarkers.has(key)) {
+      seenMarkers.add(key);
+      addInteractiveMarker(obj, to.lat, to.lng, r.toLabel || "Destination");
     }
+
+    routeIndex++;
   }
 
   setPanel("Select a marker", `<p>Hover markers to preview. Click a marker to see full details.</p>`);
