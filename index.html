@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cross & Crescent — Artefact Movement</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="layout">
+
+    <!-- LEFT COLUMN -->
+    <section class="mapWrap">
+
+      <!-- Tabs -->
+      <div class="tabsHeader">
+        <nav class="objectTabs" aria-label="Objects">
+
+          <button class="tabBtn active"
+                  type="button"
+                  data-object="obj_001">
+            Casket
+          </button>
+
+          <button class="tabBtn"
+                  type="button"
+                  data-object="obj_011">
+            Box and Lid
+          </button>
+
+          <button class="tabBtn"
+                  type="button"
+                  data-object="obj_010">
+            Water Flask
+          </button>
+
+        </nav>
+      </div>
+
+      <div id="map"></div>
+
+      <p class="attribution">
+        Map data ©
+        <a href="https://www.openstreetmap.org/copyright"
+           target="_blank"
+           rel="noreferrer">
+          OpenStreetMap
+        </a>.
+      </p>
+
+    </section>
+
+    <!-- RIGHT COLUMN -->
+    <aside class="panel">
+      <h2 id="panelTitle">Select an object</h2>
+      <div id="panelBody" class="panelBody">
+        <p>
+          Click a tab, then hover markers for a preview and click for full details.
+        </p>
+      </div>
+    </aside>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
